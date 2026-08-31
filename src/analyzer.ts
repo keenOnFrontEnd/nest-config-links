@@ -38,7 +38,7 @@ export class NestConfigAnalyzer {
               keys: [],
               usages: [],
             };
-            collectObjectKeys(uri, file, name, object, '', namespace.keys);
+            collectObjectKeys(uri, file, name, object, '', namespace.keys, localBindings(factory));
             index.namespaces.set(name, namespace);
           }
         }
@@ -113,15 +113,44 @@ function returnedObject(factory: ts.ArrowFunction | ts.FunctionExpression): ts.O
   return returned?.expression && ts.isObjectLiteralExpression(returned.expression) ? returned.expression : undefined;
 }
 
-function collectObjectKeys(uri: vscode.Uri, file: ts.SourceFile, namespace: string, object: ts.ObjectLiteralExpression, prefix: string, output: ConfigKey[]): void {
+function collectObjectKeys(
+  uri: vscode.Uri,
+  file: ts.SourceFile,
+  namespace: string,
+  object: ts.ObjectLiteralExpression,
+  prefix: string,
+  output: ConfigKey[],
+  bindings: ReadonlyMap<string, string>,
+): void {
   for (const property of object.properties) {
     if (!ts.isPropertyAssignment(property) || !property.name) continue;
     const name = propertyName(property.name);
     if (!name) continue;
     const path = prefix ? `${prefix}.${name}` : name;
-    if (ts.isObjectLiteralExpression(property.initializer)) collectObjectKeys(uri, file, namespace, property.initializer, path, output);
-    else output.push({ namespace, path, type: inferType(property.initializer), expression: property.initializer.getText(file), location: location(uri, file, property.name) });
+    if (ts.isObjectLiteralExpression(property.initializer)) {
+      collectObjectKeys(uri, file, namespace, property.initializer, path, output, bindings);
+    } else {
+      output.push({
+        namespace,
+        path,
+        type: ts.isIdentifier(property.initializer) ? (bindings.get(property.initializer.text) ?? 'unknown') : inferType(property.initializer),
+        expression: property.initializer.getText(file),
+        location: location(uri, file, property.name),
+      });
+    }
   }
+}
+
+function localBindings(factory: ts.ArrowFunction | ts.FunctionExpression): ReadonlyMap<string, string> {
+  const bindings = new Map<string, string>();
+  if (!ts.isBlock(factory.body)) return bindings;
+  for (const statement of factory.body.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.initializer) bindings.set(declaration.name.text, inferType(declaration.initializer));
+    }
+  }
+  return bindings;
 }
 
 function propertyName(name: ts.PropertyName): string | undefined {
@@ -133,9 +162,9 @@ function inferType(expression: ts.Expression): string {
   if (ts.isNumericLiteral(expression)) return 'number';
   if (ts.isStringLiteralLike(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return 'string';
   const text = expression.getText();
-  if (/undefined|null/.test(text)) return 'unknown | undefined';
   if (/Number\.parse|parseInt|parseFloat|positiveInt|Number\(/.test(text)) return 'number';
-  if (/\.toUpperCase\(|\.trim\(/.test(text)) return 'string';
+  if (/\.toUpperCase\(|\.trim\(/.test(text)) return /undefined|null/.test(text) ? 'string | undefined' : 'string';
+  if (/undefined|null/.test(text)) return 'unknown | undefined';
   return 'unknown';
 }
 

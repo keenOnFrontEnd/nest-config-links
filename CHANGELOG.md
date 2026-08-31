@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 - Bundle the TypeScript AST dependency into the VSIX so the extension activates correctly after installation.
 
+## 0.1.2 — 2026-08-31
+
+- Improve inferred types for environment-variable expressions and local fallback bindings inside config factories.
+
 ## 0.1.0 — 2026-08-31
 
 - Initial release.
