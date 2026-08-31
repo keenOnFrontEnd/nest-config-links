@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## 0.2.2 — 2026-08-31
+
+- Recognize the standard `registerAs('name', () => ({ ... }))` syntax, whose return object is parenthesized in the TypeScript AST.
+
 ## 0.2.1 — 2026-08-31
 
 - Scan each supported TypeScript extension explicitly and index unsaved open editors, preventing incomplete configuration results.

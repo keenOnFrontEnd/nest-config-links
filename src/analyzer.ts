@@ -166,6 +166,12 @@ function isObjectReturningFactory(node: ts.Expression): node is ts.ArrowFunction
 
 function returnedObject(factory: ts.ArrowFunction | ts.FunctionExpression): ts.ObjectLiteralExpression | undefined {
   if (ts.isObjectLiteralExpression(factory.body)) return factory.body;
+  // `() => ({ key: value })` — найпоширеніша форма `registerAs`, але в AST
+  // обʼєкт обгорнутий у ParenthesizedExpression. Без розгортання тут губились
+  // всі такі namespace-и (на відміну від `() => { return { ... } }`).
+  if (ts.isParenthesizedExpression(factory.body) && ts.isObjectLiteralExpression(factory.body.expression)) {
+    return factory.body.expression;
+  }
   if (!ts.isBlock(factory.body)) return undefined;
   const returned = factory.body.statements.find(ts.isReturnStatement);
   return returned?.expression && ts.isObjectLiteralExpression(returned.expression) ? returned.expression : undefined;
