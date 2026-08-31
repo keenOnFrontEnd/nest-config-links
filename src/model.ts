@@ -13,7 +13,7 @@ export interface ConfigKey {
   location: SourceLocation;
 }
 
-export type UsageKind = 'ConfigService' | 'Typed injection' | 'Module registration';
+export type UsageKind = 'ConfigService' | 'Typed injection' | 'Module registration' | 'Factory invocation';
 
 export interface ConfigUsage {
   namespace: string;

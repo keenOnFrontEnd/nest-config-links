@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here.
 
+## 0.1.3 — 2026-08-31
+
+- Detect each explicit item in `ConfigModule.forRoot({ load: [...] })` instead of relying on text matching.
+- Report direct config-factory calls such as `grpcClientTlsConfig()` as usages.
+
 ## 0.1.1 — 2026-08-31
 
 - Bundle the TypeScript AST dependency into the VSIX so the extension activates correctly after installation.

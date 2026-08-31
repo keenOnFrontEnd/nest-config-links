@@ -54,6 +54,7 @@ export class NestConfigAnalyzer {
       if (configKey) this.addConfigServiceUsage(uri, file, node, configKey, index);
       if (ts.isTypeReferenceNode(node)) this.addTypedUsage(uri, file, node, index);
       if (ts.isPropertyAccessExpression(node)) this.addInjectionTokenUsage(uri, file, node, index);
+      if (ts.isCallExpression(node)) this.addFactoryInvocation(uri, file, node, index);
       if (ts.isCallExpression(node) && isConfigModuleRegistration(node)) this.addModuleRegistration(uri, file, node, index);
       ts.forEachChild(node, visit);
     };
@@ -88,11 +89,33 @@ export class NestConfigAnalyzer {
     }
   }
 
-  private addModuleRegistration(uri: vscode.Uri, file: ts.SourceFile, node: ts.CallExpression, index: ConfigIndex): void {
-    const text = node.getText(file);
+  private addFactoryInvocation(uri: vscode.Uri, file: ts.SourceFile, node: ts.CallExpression, index: ConfigIndex): void {
+    if (!ts.isIdentifier(node.expression)) return;
     for (const entry of index.namespaces.values()) {
-      if (new RegExp(`\\b${escapeRegex(entry.variableName)}\\b`).test(text)) {
-        entry.usages.push({ namespace: entry.name, kind: 'Module registration', label: 'ConfigModule.forRoot({ load: [...] })', location: location(uri, file, node) });
+      if (entry.variableName === node.expression.text) {
+        entry.usages.push({ namespace: entry.name, kind: 'Factory invocation', label: `${entry.variableName}()`, location: location(uri, file, node) });
+      }
+    }
+  }
+
+  private addModuleRegistration(uri: vscode.Uri, file: ts.SourceFile, node: ts.CallExpression, index: ConfigIndex): void {
+    const options = node.arguments[0];
+    if (!options || !ts.isObjectLiteralExpression(options)) return;
+    const load = options.properties.find((property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) && propertyName(property.name) === 'load',
+    );
+    if (!load || !ts.isArrayLiteralExpression(load.initializer)) return;
+    for (const element of load.initializer.elements) {
+      if (!ts.isIdentifier(element)) continue;
+      for (const entry of index.namespaces.values()) {
+        if (entry.variableName === element.text) {
+          entry.usages.push({
+            namespace: entry.name,
+            kind: 'Module registration',
+            label: 'ConfigModule.forRoot({ load: [...] })',
+            location: location(uri, file, element),
+          });
+        }
       }
     }
   }
@@ -183,8 +206,4 @@ function location(uri: vscode.Uri, file: ts.SourceFile, node: ts.Node): SourceLo
   const start = file.getLineAndCharacterOfPosition(node.getStart(file));
   const end = file.getLineAndCharacterOfPosition(node.getEnd());
   return { uri, range: new vscode.Range(start.line, start.character, end.line, end.character) };
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
