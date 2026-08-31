@@ -1,0 +1,61 @@
+{
+  "name": "nest-config-links",
+  "displayName": "Nest Config Links",
+  "description": "Explore NestJS registerAs configuration namespaces, keys, types, and usages.",
+  "version": "0.1.0",
+  "publisher": "keenonfrontend",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keenOnFrontEnd/nest-config-links.git"
+  },
+  "license": "MIT",
+  "engines": { "vscode": "^1.96.0" },
+  "categories": ["Programming Languages", "Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "nestConfigLinks.refresh", "title": "Nest Config Links: Refresh" },
+      { "command": "nestConfigLinks.showForConfig", "title": "Nest Config Links: Show Usages" }
+    ],
+    "viewsContainers": {
+      "activitybar": [{ "id": "nestConfigLinks", "title": "Nest Config", "icon": "media/config.svg" }]
+    },
+    "views": {
+      "nestConfigLinks": [{ "id": "nestConfigLinks.explorer", "name": "Configuration Links" }]
+    },
+    "menus": {
+      "editor/context": [{ "command": "nestConfigLinks.showForConfig", "when": "editorLangId == typescript || editorLangId == typescriptreact", "group": "navigation@20" }]
+    },
+    "configuration": {
+      "title": "Nest Config Links",
+      "properties": {
+        "nestConfigLinks.exclude": {
+          "type": "array",
+          "default": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.next/**", "**/coverage/**"],
+          "description": "Glob patterns excluded while scanning the workspace."
+        },
+        "nestConfigLinks.showEnvironmentValues": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reserved for a future opt-in .env value preview. Secrets are never displayed."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "test": "node --test out/test/**/*.test.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/vscode": "^1.96.0",
+    "@vscode/vsce": "^3.2.1",
+    "eslint": "^9.16.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0"
+  }
+}
