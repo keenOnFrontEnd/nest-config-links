@@ -2,7 +2,7 @@
   "name": "nest-config-links",
   "displayName": "Nest Config Links",
   "description": "Explore NestJS registerAs configuration namespaces, keys, types, and usages.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "keenonfrontend",
   "repository": {
     "type": "git",

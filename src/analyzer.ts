@@ -2,15 +2,17 @@ import * as ts from 'typescript';
 import * as vscode from 'vscode';
 import { ConfigIndex, ConfigKey, ConfigNamespace, ModuleMemberKind, NestModule, SourceLocation } from './model';
 
-const SOURCE_GLOB = '**/*.{ts,tsx,mts,cts}';
+const SOURCE_GLOBS = ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts'];
 
 export class NestConfigAnalyzer {
   async scan(): Promise<ConfigIndex> {
     const exclude = vscode.workspace.getConfiguration('nestConfigLinks').get<string[]>('exclude', []);
     const excluded = exclude.length ? `{${exclude.join(',')}}` : undefined;
-    const files = await vscode.workspace.findFiles(SOURCE_GLOB, excluded);
+    const matches = await Promise.all(SOURCE_GLOBS.map((glob) => vscode.workspace.findFiles(glob, excluded)));
+    const files = [...new Map(matches.flat().map((uri) => [uri.toString(), uri])).values()];
     const index: ConfigIndex = { namespaces: new Map(), modules: new Map() };
-    const sources = await Promise.all(files.map((uri) => this.readSource(uri)));
+    const readResults = await Promise.allSettled(files.map((uri) => this.readSource(uri)));
+    const sources = readResults.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
 
     for (const source of sources) this.collectDeclarations(source.uri, source.file, index);
     for (const source of sources) this.collectUsages(source.uri, source.file, index);
@@ -19,8 +21,9 @@ export class NestConfigAnalyzer {
   }
 
   private async readSource(uri: vscode.Uri): Promise<{ uri: vscode.Uri; file: ts.SourceFile }> {
-    const bytes = await vscode.workspace.fs.readFile(uri);
-    return { uri, file: ts.createSourceFile(uri.fsPath, Buffer.from(bytes).toString('utf8'), ts.ScriptTarget.Latest, true) };
+    const openDocument = vscode.workspace.textDocuments.find((document) => document.uri.toString() === uri.toString());
+    const content = openDocument?.getText() ?? Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+    return { uri, file: ts.createSourceFile(uri.fsPath, content, ts.ScriptTarget.Latest, true) };
   }
 
   private collectDeclarations(uri: vscode.Uri, file: ts.SourceFile, index: ConfigIndex): void {

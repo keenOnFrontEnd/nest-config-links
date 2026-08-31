@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## 0.2.1 — 2026-08-31
+
+- Scan each supported TypeScript extension explicitly and index unsaved open editors, preventing incomplete configuration results.
+
 ## 0.2.0 — 2026-08-31
 
 - Add the **Nest Modules** explorer for `@Module()` declarations and their imports, providers, controllers, exports, and incoming imports.
