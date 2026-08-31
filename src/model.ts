@@ -31,6 +31,23 @@ export interface ConfigNamespace {
   usages: ConfigUsage[];
 }
 
+export type ModuleMemberKind = 'imports' | 'providers' | 'controllers' | 'exports';
+
+export interface ModuleMember {
+  kind: ModuleMemberKind;
+  label: string;
+  moduleName?: string;
+  location: SourceLocation;
+}
+
+export interface NestModule {
+  name: string;
+  location: SourceLocation;
+  members: ModuleMember[];
+  importedBy: SourceLocation[];
+}
+
 export interface ConfigIndex {
   namespaces: Map<string, ConfigNamespace>;
+  modules: Map<string, NestModule>;
 }

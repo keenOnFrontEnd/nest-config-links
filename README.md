@@ -21,6 +21,7 @@ From this declaration, the extension can show the `mail.host` and `mail.port` ke
 - Inferred lightweight TypeScript types and the source expression/default value.
 - Workspace usages grouped by key.
 - Nest module registration locations.
+- A separate **Nest Modules** graph for `@Module()` declarations, including `imports`, `providers`, `controllers`, `exports`, and incoming module imports.
 - Tree View, CodeLens, hover information, and completion for `ConfigService.get('namespace.`.
 - One-click navigation from a key or usage to its exact source location.
 
@@ -36,6 +37,7 @@ Secrets are not read or revealed. The extension displays source expressions, suc
 - `ConfigType<typeof namespaceConfig>`
 - `@Inject(namespaceConfig.KEY)`
 - `ConfigModule.forRoot({ load: [namespaceConfig] })`
+- `@Module({ imports, providers, controllers, exports })`
 
 ## Usage
 
@@ -45,21 +47,3 @@ Secrets are not read or revealed. The extension displays source expressions, suc
 4. Click a configuration key or usage to jump to its source.
 
 Place the cursor on a `registerAs()` declaration and run **Nest Config Links: Show Usages** to focus the explorer.
-
-## Development
-
-```bash
-pnpm install
-pnpm compile
-```
-
-Then press `F5` in VS Code to launch an Extension Development Host.
-
-## Publishing
-
-```bash
-pnpm package
-npx @vscode/vsce publish
-```
-
-Publishing requires a Visual Studio Marketplace publisher and a token with `Marketplace → Manage` access.

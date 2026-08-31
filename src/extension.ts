@@ -6,7 +6,7 @@ import { ConfigTreeProvider } from './tree';
 export function activate(context: vscode.ExtensionContext): void {
   const analyzer = new NestConfigAnalyzer();
   const tree = new ConfigTreeProvider();
-  let index: ConfigIndex = { namespaces: new Map() };
+  let index: ConfigIndex = { namespaces: new Map(), modules: new Map() };
 
   const refresh = async (): Promise<void> => {
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Nest Config Links: scanning workspace' }, async () => {

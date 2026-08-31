@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## 0.2.0 — 2026-08-31
+
+- Add the **Nest Modules** explorer for `@Module()` declarations and their imports, providers, controllers, exports, and incoming imports.
+
 ## 0.1.3 — 2026-08-31
 
 - Detect each explicit item in `ConfigModule.forRoot({ load: [...] })` instead of relying on text matching.

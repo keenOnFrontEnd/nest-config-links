@@ -1,6 +1,6 @@
 import * as ts from 'typescript';
 import * as vscode from 'vscode';
-import { ConfigIndex, ConfigKey, ConfigNamespace, SourceLocation } from './model';
+import { ConfigIndex, ConfigKey, ConfigNamespace, ModuleMemberKind, NestModule, SourceLocation } from './model';
 
 const SOURCE_GLOB = '**/*.{ts,tsx,mts,cts}';
 
@@ -9,11 +9,12 @@ export class NestConfigAnalyzer {
     const exclude = vscode.workspace.getConfiguration('nestConfigLinks').get<string[]>('exclude', []);
     const excluded = exclude.length ? `{${exclude.join(',')}}` : undefined;
     const files = await vscode.workspace.findFiles(SOURCE_GLOB, excluded);
-    const index: ConfigIndex = { namespaces: new Map() };
+    const index: ConfigIndex = { namespaces: new Map(), modules: new Map() };
     const sources = await Promise.all(files.map((uri) => this.readSource(uri)));
 
     for (const source of sources) this.collectDeclarations(source.uri, source.file, index);
     for (const source of sources) this.collectUsages(source.uri, source.file, index);
+    this.linkModules(index);
     return index;
   }
 
@@ -43,9 +44,36 @@ export class NestConfigAnalyzer {
           }
         }
       }
+      if (ts.isClassDeclaration(node) && node.name) this.collectNestModule(uri, file, node, index);
       ts.forEachChild(node, visit);
     };
     visit(file);
+  }
+
+  private collectNestModule(uri: vscode.Uri, file: ts.SourceFile, node: ts.ClassDeclaration, index: ConfigIndex): void {
+    const decorator = ts.getDecorators(node)?.find(isModuleDecorator);
+    if (!decorator || !ts.isCallExpression(decorator.expression) || !node.name) return;
+    const options = decorator.expression.arguments[0];
+    if (!options || !ts.isObjectLiteralExpression(options)) return;
+    const module: NestModule = { name: node.name.text, location: location(uri, file, node.name), members: [], importedBy: [] };
+    for (const property of options.properties) {
+      if (!ts.isPropertyAssignment(property) || !ts.isArrayLiteralExpression(property.initializer)) continue;
+      const kind = propertyName(property.name) as ModuleMemberKind | undefined;
+      if (!kind || !['imports', 'providers', 'controllers', 'exports'].includes(kind)) continue;
+      for (const element of property.initializer.elements) {
+        module.members.push({ kind, label: element.getText(file), moduleName: ts.isIdentifier(element) ? element.text : undefined, location: location(uri, file, element) });
+      }
+    }
+    index.modules.set(module.name, module);
+  }
+
+  private linkModules(index: ConfigIndex): void {
+    for (const source of index.modules.values()) {
+      for (const member of source.members) {
+        if (member.kind !== 'imports' || !member.moduleName) continue;
+        index.modules.get(member.moduleName)?.importedBy.push(source.location);
+      }
+    }
   }
 
   private collectUsages(uri: vscode.Uri, file: ts.SourceFile, index: ConfigIndex): void {
@@ -123,6 +151,10 @@ export class NestConfigAnalyzer {
 
 function isRegisterAsCall(node: ts.Expression): node is ts.CallExpression {
   return ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'registerAs';
+}
+
+function isModuleDecorator(decorator: ts.Decorator): boolean {
+  return ts.isCallExpression(decorator.expression) && ts.isIdentifier(decorator.expression.expression) && decorator.expression.expression.text === 'Module';
 }
 
 function isObjectReturningFactory(node: ts.Expression): node is ts.ArrowFunction | ts.FunctionExpression {
