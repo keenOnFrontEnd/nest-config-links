@@ -1,8 +1,10 @@
 import * as ts from 'typescript';
 import * as vscode from 'vscode';
+import * as path from 'node:path';
 import { ConfigIndex, ConfigKey, ConfigNamespace, ModuleMemberKind, NestModule, SourceLocation } from './model';
 
 const SOURCE_GLOBS = ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts'];
+interface ParsedSource { uri: vscode.Uri; file: ts.SourceFile; }
 
 export class NestConfigAnalyzer {
   async scan(): Promise<ConfigIndex> {
@@ -13,20 +15,21 @@ export class NestConfigAnalyzer {
     const index: ConfigIndex = { namespaces: new Map(), modules: new Map() };
     const readResults = await Promise.allSettled(files.map((uri) => this.readSource(uri)));
     const sources = readResults.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+    const sourceByPath = new Map(sources.map((source) => [normalizePath(source.uri.fsPath), source]));
 
-    for (const source of sources) this.collectDeclarations(source.uri, source.file, index);
+    for (const source of sources) this.collectDeclarations(source.uri, source.file, index, sourceByPath);
     for (const source of sources) this.collectUsages(source.uri, source.file, index);
     this.linkModules(index);
     return index;
   }
 
-  private async readSource(uri: vscode.Uri): Promise<{ uri: vscode.Uri; file: ts.SourceFile }> {
+  private async readSource(uri: vscode.Uri): Promise<ParsedSource> {
     const openDocument = vscode.workspace.textDocuments.find((document) => document.uri.toString() === uri.toString());
     const content = openDocument?.getText() ?? Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
     return { uri, file: ts.createSourceFile(uri.fsPath, content, ts.ScriptTarget.Latest, true) };
   }
 
-  private collectDeclarations(uri: vscode.Uri, file: ts.SourceFile, index: ConfigIndex): void {
+  private collectDeclarations(uri: vscode.Uri, file: ts.SourceFile, index: ConfigIndex, sourceByPath: ReadonlyMap<string, ParsedSource>): void {
     const visit = (node: ts.Node): void => {
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && isRegisterAsCall(node.initializer)) {
         const namespaceArg = node.initializer.arguments[0];
@@ -47,13 +50,19 @@ export class NestConfigAnalyzer {
           }
         }
       }
-      if (ts.isClassDeclaration(node) && node.name) this.collectNestModule(uri, file, node, index);
+      if (ts.isClassDeclaration(node) && node.name) this.collectNestModule(uri, file, node, index, sourceByPath);
       ts.forEachChild(node, visit);
     };
     visit(file);
   }
 
-  private collectNestModule(uri: vscode.Uri, file: ts.SourceFile, node: ts.ClassDeclaration, index: ConfigIndex): void {
+  private collectNestModule(
+    uri: vscode.Uri,
+    file: ts.SourceFile,
+    node: ts.ClassDeclaration,
+    index: ConfigIndex,
+    sourceByPath: ReadonlyMap<string, ParsedSource>,
+  ): void {
     const decorator = ts.getDecorators(node)?.find(isModuleDecorator);
     if (!decorator || !ts.isCallExpression(decorator.expression) || !node.name) return;
     const options = decorator.expression.arguments[0];
@@ -64,7 +73,14 @@ export class NestConfigAnalyzer {
       const kind = propertyName(property.name) as ModuleMemberKind | undefined;
       if (!kind || !['imports', 'providers', 'controllers', 'exports'].includes(kind)) continue;
       for (const element of property.initializer.elements) {
-        module.members.push({ kind, label: element.getText(file), moduleName: ts.isIdentifier(element) ? element.text : undefined, location: location(uri, file, element) });
+        const memberName = ts.isIdentifier(element) ? element.text : undefined;
+        module.members.push({
+          kind,
+          label: element.getText(file),
+          moduleName: memberName,
+          location: location(uri, file, element),
+          targetLocation: memberName ? importedSymbolLocation(uri, file, memberName, sourceByPath) : undefined,
+        });
       }
     }
     index.modules.set(module.name, module);
@@ -150,6 +166,71 @@ export class NestConfigAnalyzer {
       }
     }
   }
+}
+
+function importedSymbolLocation(
+  sourceUri: vscode.Uri,
+  file: ts.SourceFile,
+  localName: string,
+  sourceByPath: ReadonlyMap<string, ParsedSource>,
+): SourceLocation | undefined {
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteralLike(statement.moduleSpecifier)) continue;
+    const imported = importedName(statement.importClause, localName);
+    if (!imported) continue;
+    const target = resolveRelativeImport(sourceUri, statement.moduleSpecifier.text, sourceByPath);
+    if (!target) continue;
+    const declaration = findExportedDeclaration(target.file, imported);
+    return declaration ? location(target.uri, target.file, declaration) : { uri: target.uri, range: new vscode.Range(0, 0, 0, 0) };
+  }
+  return undefined;
+}
+
+function importedName(clause: ts.ImportClause | undefined, localName: string): string | undefined {
+  if (!clause) return undefined;
+  if (clause.name?.text === localName) return 'default';
+  const bindings = clause.namedBindings;
+  if (!bindings || !ts.isNamedImports(bindings)) return undefined;
+  const element = bindings.elements.find((item) => item.name.text === localName);
+  return element ? (element.propertyName?.text ?? element.name.text) : undefined;
+}
+
+function resolveRelativeImport(
+  sourceUri: vscode.Uri,
+  specifier: string,
+  sourceByPath: ReadonlyMap<string, ParsedSource>,
+): ParsedSource | undefined {
+  if (!specifier.startsWith('.')) return undefined;
+  const base = path.resolve(path.dirname(sourceUri.fsPath), specifier);
+  const candidates = [
+    base,
+    base.replace(/\.(?:[cm]?js|jsx)$/, '.ts'),
+    base.replace(/\.(?:[cm]?js|jsx)$/, '.tsx'),
+    ...['.ts', '.tsx', '.mts', '.cts'].map((extension) => `${base}${extension}`),
+    ...['index.ts', 'index.tsx', 'index.mts', 'index.cts'].map((name) => path.join(base, name)),
+  ];
+  return candidates.map((candidate) => sourceByPath.get(normalizePath(candidate))).find(Boolean);
+}
+
+function findExportedDeclaration(file: ts.SourceFile, name: string): ts.Identifier | undefined {
+  for (const statement of file.statements) {
+    if ((ts.isClassDeclaration(statement) || ts.isFunctionDeclaration(statement) || ts.isVariableStatement(statement)) && hasExportModifier(statement)) {
+      if ((ts.isClassDeclaration(statement) || ts.isFunctionDeclaration(statement)) && statement.name?.text === name) return statement.name;
+      if (ts.isVariableStatement(statement)) {
+        const declaration = statement.declarationList.declarations.find((item) => ts.isIdentifier(item.name) && item.name.text === name);
+        if (declaration && ts.isIdentifier(declaration.name)) return declaration.name;
+      }
+    }
+  }
+  return undefined;
+}
+
+function hasExportModifier(node: ts.HasModifiers): boolean {
+  return ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+}
+
+function normalizePath(value: string): string {
+  return path.normalize(value);
 }
 
 function isRegisterAsCall(node: ts.Expression): node is ts.CallExpression {

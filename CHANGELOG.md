@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## 0.3.0 — 2026-08-31
+
+- Resolve locally imported Nest module members to their source declarations, so repository/service/controller entries open their own files.
+
 ## 0.2.2 — 2026-08-31
 
 - Recognize the standard `registerAs('name', () => ({ ... }))` syntax, whose return object is parenthesized in the TypeScript AST.

@@ -38,6 +38,8 @@ export interface ModuleMember {
   label: string;
   moduleName?: string;
   location: SourceLocation;
+  /** Declaration in the imported local source file, when it can be resolved. */
+  targetLocation?: SourceLocation;
 }
 
 export interface NestModule {

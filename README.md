@@ -22,6 +22,7 @@ From this declaration, the extension can show the `mail.host` and `mail.port` ke
 - Workspace usages grouped by key.
 - Nest module registration locations.
 - A separate **Nest Modules** graph for `@Module()` declarations, including `imports`, `providers`, `controllers`, `exports`, and incoming module imports.
+- Provider, controller, and locally imported module entries open the declaration in their own source file rather than the referring `@Module()` array.
 - Tree View, CodeLens, hover information, and completion for `ConfigService.get('namespace.`.
 - One-click navigation from a key or usage to its exact source location.
 

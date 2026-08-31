@@ -91,8 +91,14 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<Element> {
     }
     if (element instanceof ModuleMemberElement) {
       const item = new vscode.TreeItem(element.member.label, vscode.TreeItemCollapsibleState.None);
+      if (element.member.targetLocation) {
+        item.description = vscode.workspace.asRelativePath(element.member.targetLocation.uri);
+        item.tooltip = `Open declaration in ${vscode.workspace.asRelativePath(element.member.targetLocation.uri)}`;
+      } else {
+        item.tooltip = 'Open this provider reference in the declaring Nest module';
+      }
       item.iconPath = new vscode.ThemeIcon('symbol-reference');
-      item.command = openCommand(element.member.location);
+      item.command = openCommand(element.member.targetLocation ?? element.member.location);
       return item;
     }
     if (element instanceof ImportedByElement) {
